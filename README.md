@@ -41,7 +41,7 @@ You will need to modify the following files:
     * To change the output directory
 * [src/unreal.h](src/unreal.h)
     * Change the unreal classes if necessary
-* [sdk/sdk_unreal.h](src/sdk_unreal.h)
+* [sdk/sdk_unreal.h](sdk/sdk_unreal.h)
     * Again, change the unreal classes if necessary
 
 ```pwsh
