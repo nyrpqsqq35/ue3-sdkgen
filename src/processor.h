@@ -1,3 +1,8 @@
+//
+// Copyright (c) 2024 nyrpqsqq35
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+
 #pragma once
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/flat_hash_set.h>
@@ -12,7 +17,7 @@
 #include <absl/container/node_hash_map.h>
 
 namespace processor {
-inline std::filesystem::path sdk_path = std::filesystem::current_path() / ".." / "sdk";
+inline std::filesystem::path sdk_path = std::filesystem::current_path() / ".." / ".." / "sdk";
 
 typedef struct Package {
  public:

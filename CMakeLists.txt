@@ -12,8 +12,10 @@ find_package(magic_enum CONFIG REQUIRED)
 
 set_target_properties(spdlog::spdlog_header_only PROPERTIES INTERFACE_COMPILE_OPTIONS "")
 
-#add_subdirectory(sdk)
-
+option(SDKGEN_IN_TREE_SDK "Set to ON if you want to edit the runtime SDK stuff" OFF)
+if (SDKGEN_IN_TREE_SDK)
+    add_subdirectory(sdk)
+endif ()
 
 set(SRCS src/main.cc
         src/pch.h
@@ -57,3 +59,6 @@ set_target_properties(ue3_sdk_gen_internal PROPERTIES
         PRECOMPILE_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/src/pch.h"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/out"
 )
+# HACK
+target_include_directories(ue3_sdk_gen PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sdk")
+target_include_directories(ue3_sdk_gen_internal PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sdk")

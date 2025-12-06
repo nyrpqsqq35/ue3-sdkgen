@@ -1,3 +1,8 @@
+//
+// Copyright (c) 2024 nyrpqsqq35
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+
 #include "processor.h"
 
 #include <absl/container/flat_hash_map.h>

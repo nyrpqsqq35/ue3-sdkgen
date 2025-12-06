@@ -6,12 +6,16 @@
 
 * generator runs internally or externally
 * proper bitfield generation
-* [fast af](https://youtu.be/6E7ZGCfruaw) (internal generates RL sdk in ~800ms)
+* doesn't rely on your compiler to pad structs
+* [fast af](https://youtu.be/6E7ZGCfruaw) (internal generates RL SDK in ~800ms)
+* no credits required when generated SDK is compiled into your binary
+    * ue3-sdk-gen is licensed under [Apache 2.0 with LLVM exception](/COPYING)
 
 ## Caveats
 
 * only works on Windows
 * only works for targets on x64 using wide-strings
+* generated SDK needs C++23
 * still wip, some things you want may be missing
 
 ## Building
@@ -31,10 +35,14 @@ Ensure submodules are cloned!!! (`git clone --recursive` or `git submodule updat
 
 You will need to modify the following files:
 
-- [src/config.h](src/config.h)
-    - Update the offsets if they are out-of-date
-- [src/processor.h](src/processor.h)
-    - To change the output directory
+* [src/config.h](src/config.h)
+    * Update the offsets if they are out-of-date
+* [src/processor.h](src/processor.h)
+    * To change the output directory
+* [src/unreal.h](src/unreal.h)
+    * Change the unreal classes if necessary
+* [sdk/sdk_unreal.h](src/sdk_unreal.h)
+    * Again, change the unreal classes if necessary
 
 ```pwsh
 # Configure CMake project
@@ -52,3 +60,7 @@ dir build/out/
 #   - Run in terminal to generate the SDK
 ```
 
+### Credits
+
+Thanks to TheFeckless
+for [their work on their UE3 SDK generator](https://www.unknowncheats.me/forum/unreal-engine-3-a/71911-thefeckless-ue3-sdk-generator.html).

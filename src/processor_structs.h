@@ -1,3 +1,8 @@
+//
+// Copyright (c) 2024 nyrpqsqq35
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+
 #pragma once
 
 #include <absl/container/flat_hash_set.h>
@@ -161,7 +166,7 @@ std::string StandaloneProcessStruct(
       }
 
       for (uint32_t bit = last_mask; bit < this_mask; bit <<= 1) {
-        file << GetPropertyCType(child) << " _pad_" << std::hex << bit << " : 1;\n";
+        file << GetPropertyCType(child) << " SDKGEN_CONCAT2(_pad_, __LINE__) : 1;\n";
       }
     }
 

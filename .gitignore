@@ -1,0 +1,4 @@
+*build*/
+sdk/*
+!sdk/CMakeLists.txt
+!sdk/sdk*

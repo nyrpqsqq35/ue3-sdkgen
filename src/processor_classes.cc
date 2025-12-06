@@ -1,4 +1,11 @@
+//
+// Copyright (c) 2024 nyrpqsqq35
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+
 #include "processor_classes.h"
+
+#include "sdk_hash.h"
 
 #include "processor.h"
 #include "processor_structs.h"
@@ -97,7 +104,22 @@ void ProcessFunction(bridge::Pointer<UObject>& clazz, bridge::Pointer<UFunction>
     // for 0-size non-static member struct
     file << "[[msvc::no_unique_address]] ";
   }
-  file << "struct " << our_name << " {\n  ";
+  file << "struct " << our_name << " : ";
+  const auto find_name_hash = StringHash<>::Calculate(func->GetFullName());
+  const auto is_native = !!(func->function_flags & FUNC_Native) ? "true" : "false";
+
+  std::stringstream cufn;
+  if (func->function_flags & FUNC_Static) {
+    // prepend ULL to find_name_hash to make it an unsigned long long literal
+    cufn << "CallableUFunctionStatic<struct " << params_name << ", " << find_name_hash.value()
+         << "ULL, " << is_native << ", " << CreateIdentifierName(clazz) << ">";
+  } else {
+    cufn << "CallableUFunction<struct " << params_name << ", " << find_name_hash.value() << "ULL, "
+         << is_native << ">";
+  }
+
+  file << cufn.str() << " ";
+  file << " {\n  ";
 
   if (func->function_flags & FUNC_Static) {
     file << "static ";
@@ -120,23 +142,19 @@ void ProcessFunction(bridge::Pointer<UObject>& clazz, bridge::Pointer<UFunction>
   file << "} " << our_name << ";\n";
 
   source_file << function_signature << "{ \n";
-  source_file << "  static UFunction* fn = nullptr;\n";
   source_file << "  " << params_name << " params{};\n";
   source_file << source_copy_in.str() << "\n";
 
-  if (func->function_flags & FUNC_Native) {
-    source_file << "  fn->function_flags &= ~0x00000400;\n";
-  }
-  if (func->function_flags & FUNC_Static) {
-    source_file << "  " << CreateIdentifierName(clazz) << "::StaticClass()";
+  // clang format has a stroke on the unlikely attribute here
+  // clang-format off
+  if (our_name == "Call") { [[unlikely]]
+    // Fuck you!!!!
+    source_file << "  " << cufn.str() << "::Call(params);\n";
   } else {
-    // source_file << "  this";
-    source_file << "  reinterpret_cast<UObject*>(this)";
+    source_file << "  Call(params);\n";
   }
-  source_file << "->ProcessEvent(fn, &params, nullptr);\n";
-  if (func->function_flags & FUNC_Native) {
-    source_file << "  fn->function_flags |= 0x00000400;\n";
-  }
+  // clang-format on
+
   source_file << source_copy_out.str() << "\n";
   if (!return_name.empty()) {
     source_file << "  return params." << return_name << ";\n";
@@ -196,59 +214,10 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
   processor::structs::StandaloneProcessStruct<false, true>(
       obj, file, [&](const bridge::Pointer<UProperty>& child) {
         if (child->IsA("Class Core.Function")) {
-          // if (child->GetFullName() == "Function TAGame.BTAction_MoveTo.DriveAwayFrom" ||
-          //     child->GetFullName() == "Function TAGame.BTAction_MoveTo.GetAimDir" ||
-          //     child->GetFullName() == "Function TAGame.EngineShare_TA.DebugDedicatedServer") {
           bridge::Pointer<UFunction> meow(child.get());
           ProcessFunction(obj, meow, generated_functions);
-          // }
         }
       });
-
-  {
-    // bridge::Pointer<UProperty> child(uclass->children.get());
-    // absl::flat_hash_set<std::string> used_names;
-    // int member_index = 0;
-    // while (child.IsValid()) {
-    //   if (child->IsA("Class Core.Property")) {
-    //     file << GetPropertyCType(child) << " ";
-
-    //     auto struct_member_name = CreateValidName(child->name.ToString());
-
-    //     file << struct_member_name;
-    //     if (used_names.contains(struct_member_name)) {
-    //       file << std::dec << member_index;
-    //     } else {
-    //       used_names.insert(struct_member_name);
-    //     }
-
-    //     if (child->array_dim > 1) {
-    //       file << "[" << std::dec << std::setw(0) << child->array_dim << "]";
-    //     }
-    //     if (child->IsA("Class Core.MapProperty")) {
-    //       file << "[" << std::dec << std::setw(0) << GetPropertySize(child) << "]";
-    //     }
-
-    //     if (child->IsA("Class Core.BoolProperty")) {
-    //       // Bitfield
-    //       file << " : 1";
-    //     }
-
-    //     file << ";";
-
-    //     file << " // " << std::hex << std::showbase << std::setfill('0') << child->offset;
-    //     file << " size " << GetPropertySize(child) << "\n";
-    //   } else if (child->IsA("Class Core.Function")) {
-    //     if (child->GetFullName() == "Function TAGame.BTAction_MoveTo.DriveAwayFrom" ||
-    //         child->GetFullName() == "Function TAGame.BTAction_MoveTo.GetAimDir") {
-    //       bridge::Pointer<UFunction> meow(child.get());
-    //       ProcessFunction(meow, generated_functions);
-    //     }
-    //   }
-    //   child.Set(child->next.get());
-    //   ++member_index;
-    // }
-  }
 
   file << "\npublic:\n";
   for (const GeneratedFunction& func : generated_functions) {
@@ -258,9 +227,6 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
   }
 
   file << "};" << std::endl;
-
-  // file << "static_assert(sizeof(" << our_name << ") == " << std::dec << e->property_size << ");"
-  //      << std::endl;
 
   pkg.generated_classes.push_back({uclass.get(), file.str(), params_file.str(), source_file.str()});
 }
