@@ -30,6 +30,7 @@ typedef struct Package {
 
   std::list<GeneratedObject> generated_structs;
   std::list<GeneratedObject> generated_classes;
+  std::list<std::string> generated_macros;
 
   template <std::derived_from<UObject> T>
   inline bool ProcessedStruct(bridge::Pointer<T> struct_to_check) const {
@@ -43,6 +44,14 @@ typedef struct Package {
   inline bool ProcessedClass(bridge::Pointer<T> class_to_check) const {
     auto begin = generated_classes.cbegin();
     auto end = generated_classes.cend();
+    return std::find_if(begin, end, [class_to_check](const auto& item) {
+             return item.ptr == class_to_check.get();
+           }) != end;
+  }
+  template <std::derived_from<UObject> T>
+  inline bool ProcessedMacro(bridge::Pointer<T> class_to_check) const {
+    auto begin = generated_macros.cbegin();
+    auto end = generated_macros.cend();
     return std::find_if(begin, end, [class_to_check](const auto& item) {
              return item.ptr == class_to_check.get();
            }) != end;
@@ -81,19 +90,21 @@ constexpr const char kStructPrefix = 'F';
 constexpr const char kClassPrefix = 'U';
 constexpr const char kActorPrefix = 'A';
 
-template <std::derived_from<UObject> T>
+template <std::derived_from<UObject> T, bool DedupeNames = true>
 std::string CreateIdentifierName(bridge::Pointer<T>& object) {
   if (ObjectToIdentifierMap.contains(object.get())) {
     return ObjectToIdentifierMap[object.get()];
   }
 
   auto name = CreateValidName(object->name.ToString());
-  if (UsedIdentifiers.contains(name)) {
-    auto& identifier_count = IdentifierIndexCount[name];
-    name += std::to_string(++identifier_count);
-  } else {
-    IdentifierIndexCount.insert({name, 1});
-    UsedIdentifiers.insert(name);
+  if constexpr (DedupeNames) {
+    if (UsedIdentifiers.contains(name)) {
+      auto& identifier_count = IdentifierIndexCount[name];
+      name += std::to_string(++identifier_count);
+    } else {
+      IdentifierIndexCount.insert({name, 1});
+      UsedIdentifiers.insert(name);
+    }
   }
 
   auto& start_char = *name.begin();

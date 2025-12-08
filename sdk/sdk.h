@@ -5,6 +5,14 @@
 
 #pragma once
 
+#if __cplusplus < 202302L
+// MSVC users (maybe):
+// https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
+#error \
+    "*** You need C++23 to use this generated SDK. ***" \
+"If you are using MSVC, you may need to change your compiler flags. See the link in the comment above."
+#endif
+
 #define SDKGEN_NS rlsdk
 #define SDKGEN_CONCAT1(A_, B_) A_##B_
 #define SDKGEN_CONCAT2(A_, B_) SDKGEN_CONCAT1(A_, B_)
@@ -14,21 +22,9 @@
                                                  \
  public:
 
-#if __cplusplus < 202302L
-// MSVC users (maybe):
-// https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
-#error \
-    "*** You need C++23 to use this generated SDK. ***" \
-    "If you are using MSVC, you may need to change your compiler flags. See the link in the comment above."
-#endif
-
 #include <cstdint>
 #include <string>
 #include <stdexcept>
-
-#ifndef SDKGEN_NS
-#define SDKGEN_NS
-#endif
 
 using game_char = wchar_t;
 struct FPointer {
@@ -51,17 +47,14 @@ class UFunction;
 class UState;
 class UClass;
 
+// Runtime SDK headers
 #include "sdk_hash.h"
-#include "sdk_unreal.h"
 #include "sdk_callableufunction.h"
+#include "sdk_unreal.h"
+#include "sdk_rt.h"
+#include "sdk_unreal_enums.h"
 
-namespace SDKGEN_NS {
-
-// Throws std::runtime_error if there's a problem
-void Initialize();
-
-}  // namespace SDKGEN_NS
-
+// Generated headers
 // clang-format off
 #include "Core_structs.h"
 #include "Core_classes.h"

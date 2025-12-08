@@ -5,6 +5,7 @@
 
 #pragma once
 #include "sdk_unreal_array.h"
+#include "Core_macros.h"
 // ReSharper disable CppClassNeedsConstructorBecauseOfUninitializedMember
 
 extern TArray<class UObject*>* GObjects;
@@ -24,9 +25,76 @@ struct FName {
   [[nodiscard]] std::string ToString() const;
 };
 
+// TODO: the null termination is kinda busted......
 class FString : public TArray<game_char> {
  public:
+  using traits_type = std::char_traits<value_type>;
+  constexpr static size_type npos = -1;
+
+ public:
+  constexpr FString() {
+    push_back(0);  // null terminate
+  }
+  constexpr FString(const std::basic_string_view<value_type, traits_type> wsv) { assign(wsv); }
+  constexpr FString(const value_type* s) { assign(s); }
+  constexpr FString(const value_type* s, size_type count) { assign(s, count); }
   [[nodiscard]] std::string ToString() const;
+
+  constexpr FString& assign(const FString& str) { return *this = str; }
+  constexpr FString& assign(FString&& str) noexcept { return *this = std::move(str); }
+  constexpr FString& assign(size_type count, value_type ch) {
+    clear();
+    resize(count + 1, ch);
+    (*this)[count] = 0;  // null terminate
+    return *this;
+  }
+  constexpr FString& assign(const value_type* s, size_type count) {
+    // 4
+    clear();
+    reserve(count + 1);
+    insert(begin(), s, s + count);
+    push_back(0);  // null terminate
+    return *this;
+  }
+  constexpr FString& assign(const value_type* s) { return assign(s, traits_type::length(s)); }
+  template <class SV>
+  constexpr FString& assign(const SV& t) {
+    std::basic_string_view<value_type, traits_type> sv = t;
+    return assign(sv.data(), sv.size());
+  }
+  template <class SV>
+  constexpr FString& assign(const SV& t, size_type pos, size_type count = npos) {
+    std::basic_string_view<value_type, traits_type> sv = t;
+    return assign(sv.substr(pos, count));
+  }
+  constexpr FString& assign(const FString& str, size_type pos, size_type count = npos) {
+    return assign(std::basic_string_view<value_type, traits_type>(str).substr(pos, count));
+  }
+  template <class InputIt>
+  constexpr FString& assign(InputIt first, InputIt last) {
+    clear();
+    while (first != last) {
+      push_back(*first++);
+    }
+    push_back(0);  // null terminate
+    return *this;
+    // return assign(FString(first, last));
+  }
+  constexpr FString& assign(std::initializer_list<value_type> ilist) {
+    return assign(ilist.begin(), ilist.size());
+  }
+
+  size_type size() const noexcept { return std::max(size_ - 1, 0); }
+  size_type length() const noexcept { return size(); }
+
+  bool operator==(const FString& other) const noexcept { return ToString() == other.ToString(); }
+  std::strong_ordering operator<=>(const FString& other) const noexcept {
+    return ToString() <=> other.ToString();
+  }
+  bool operator==(const std::string_view other) const noexcept { return ToString() == other; }
+  std::strong_ordering operator<=>(const std::string_view& other) const noexcept {
+    return ToString() <=> other;
+  }
 };
 
 class UObject {
@@ -58,7 +126,7 @@ class UObject {
 
   template <typename T>
   [[nodiscard]] bool IsA() const {
-    if (std::is_base_of_v<UObject, T>) {
+    if constexpr (std::is_base_of_v<UObject, T>) {
       return IsA(T::StaticClass());
     }
     return false;
@@ -66,6 +134,7 @@ class UObject {
 
   static TArray<UObject*>& GObjects();
   static TArray<FNameEntry*>& GNames();
+  static UClass* FindClassOld(std::string_view class_full_name);
   static UClass* FindClass(std::string_view class_full_name);
   static UClass* FindClass(SDKGEN_NS::StringHash<> hash);
   template <typename T>
@@ -79,6 +148,22 @@ class UObject {
     }
     return nullptr;
   }
+
+  template <typename T>
+  static T* FindInstance() {
+    for (UObject* obj : GObjects()) {
+      if (obj && obj->IsA<T>()) {
+        if (obj->GetFullName().contains("Default__")) {
+          continue;
+        }
+        return static_cast<T*>(obj);
+      }
+    }
+    return nullptr;
+  }
+
+ public:
+  Object_FUNCS
 };
 static_assert(sizeof(UObject) == 96);
 
@@ -144,7 +229,7 @@ class UFunction : public UStruct {
 
  public:
   static UClass* StaticClass() {
-    static UClass* clazz = UObject::FindClass("Class Core.Object");
+    static UClass* clazz = UObject::FindClassOld("Class Core.Function");
     return clazz;
   }
   static UFunction* FindFunction(std::string_view function_full_name);
@@ -162,7 +247,7 @@ static_assert(sizeof(UState) == 400);
 class UClass : public UState {
  public:
   static UClass* StaticClass() {
-    static UClass* clazz = UObject::FindClass("Class Core.Class");
+    static UClass* clazz = UObject::FindClassOld("Class Core.Class");
     return clazz;
   }
   SDKGEN_PADFIELD(0x228);

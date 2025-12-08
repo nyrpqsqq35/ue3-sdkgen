@@ -19,13 +19,14 @@ struct GeneratedFunction {
   std::string generated_source;
 };
 
+template <bool InMacro = false>
 void ProcessFunction(bridge::Pointer<UObject>& clazz, bridge::Pointer<UFunction>& func,
                      std::vector<GeneratedFunction>& generated_functions) {
+  constexpr std::string_view kNewLine = InMacro ? "    \\\n" : "\n";
   // DLOG(INFO) << "Yes function wooo meow " << func->GetFullName();
 
-  const auto our_name = /* "exec" + */ CreateIdentifierName(func);
+  const auto our_name = /* "exec" + */ CreateIdentifierName<UFunction, false>(func);
   const auto params_name = CreateIdentifierName(clazz) + "_" + our_name;
-
   std::stringstream file;
   std::stringstream params_file;
   std::stringstream source_file;
@@ -58,7 +59,11 @@ void ProcessFunction(bridge::Pointer<UObject>& clazz, bridge::Pointer<UFunction>
           return_type = GetPropertyCType(child);
           return_name = child_name;
         } else {
-          function_params << GetPropertyCType(child);
+          if (child->IsA("Class Core.StrProperty") && !is_out) {
+            function_params << "const " << GetPropertyCType(child) << "&";
+          } else {
+            function_params << GetPropertyCType(child);
+          }
 
           // uint8(&name)[25]
           if (child->array_dim > 1) {
@@ -73,8 +78,9 @@ void ProcessFunction(bridge::Pointer<UObject>& clazz, bridge::Pointer<UFunction>
           }
           const auto params_ref = "params." + child_name;
 
-          if (child->IsA("Class Core.BoolProperty")) {
-            source_copy_in << "  " << params_ref << " = " << name << ";\n";
+          if (child->IsA("Class Core.BoolProperty") ||
+              (child->IsA("Class Core.StrProperty") && !is_out)) {
+            source_copy_in << "  " << params_ref << " = " << name << ";" << kNewLine;
           } else {
             // std::memcpy(&{params_ref}, &{name}, sizeof({name}));
             const auto CalculateSizeOf = [&](const std::string& name) -> std::string {
@@ -86,12 +92,12 @@ void ProcessFunction(bridge::Pointer<UObject>& clazz, bridge::Pointer<UFunction>
             };
 
             source_copy_in << "  std::memcpy(&" << params_ref << ", &" << name << ", "
-                           << CalculateSizeOf(name) << ");\n";
+                           << CalculateSizeOf(name) << ");" << kNewLine;
 
             if (is_out) {
               // std::memcpy(&{name}, &{params_ref}, sizeof({params_ref}));
               source_copy_out << "  std::memcpy(&" << name << ", &" << params_ref << ", "
-                              << CalculateSizeOf(params_ref) << ");\n";
+                              << CalculateSizeOf(params_ref) << ");" << kNewLine;
             }
           }
         }
@@ -119,7 +125,7 @@ void ProcessFunction(bridge::Pointer<UObject>& clazz, bridge::Pointer<UFunction>
   }
 
   file << cufn.str() << " ";
-  file << " {\n  ";
+  file << " {" << kNewLine << "  ";
 
   if (func->function_flags & FUNC_Static) {
     file << "static ";
@@ -138,8 +144,8 @@ void ProcessFunction(bridge::Pointer<UObject>& clazz, bridge::Pointer<UFunction>
     ss << ")";
     function_signature = ss.str();
   }
-  file << function_signature << ";\n";
-  file << "} " << our_name << ";\n";
+  file << function_signature << ";" << kNewLine;
+  file << "} " << our_name << ";" << kNewLine;
 
   source_file << function_signature << "{ \n";
   source_file << "  " << params_name << " params{};\n";
@@ -151,7 +157,7 @@ void ProcessFunction(bridge::Pointer<UObject>& clazz, bridge::Pointer<UFunction>
     // Fuck you!!!!
     source_file << "  " << cufn.str() << "::Call(params);\n";
   } else {
-    source_file << "  Call(params);\n";
+    source_file << "  Call(params);" << "\n";
   }
   // clang-format on
 
@@ -170,19 +176,50 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
   auto& pkg = GetPackage(package_obj);
   std::vector<GeneratedFunction> generated_functions;
 
-  auto our_full_name = obj->GetFullName();
-  if (our_full_name == "Class Core.Field" || our_full_name == "Class Core.Enum" ||
-      our_full_name == "Class Core.Const" || our_full_name == "Class Core.Property" ||
-      our_full_name == "Class Core.Struct" || our_full_name == "Class Core.Object" ||
-      our_full_name == "Class Core.Group_ORS" || our_full_name == "Class Core.Function" ||
-      our_full_name == "Class Core.Class" || our_full_name == "Class Core.State")
-    return;
-
-  if (pkg.ProcessedClass(uclass)) return;
-
   std::stringstream file;
   std::stringstream params_file;
   std::stringstream source_file;
+
+  if (const auto our_full_name = obj->GetFullName();
+      our_full_name == "Class Core.Field" || our_full_name == "Class Core.Enum" ||
+      our_full_name == "Class Core.Const" || our_full_name == "Class Core.Property" ||
+      our_full_name == "Class Core.Struct" || /*our_full_name == "Class Core.Object" ||*/
+      our_full_name == "Class Core.Group_ORS" || our_full_name == "Class Core.Function" ||
+      our_full_name == "Class Core.Class" || our_full_name == "Class Core.State") {
+    return;
+  } else if (our_full_name == "Class Core.Object") {
+    // Generate a macro with the generated functions into be included our own UObject class in a
+    // sdk_unreal.h (before the generated ones)
+    if (pkg.ProcessedClass(uclass)) return;
+    processor::structs::StandaloneProcessStruct<false, false>(
+        obj, file, [&](const bridge::Pointer<UProperty>& child) {
+          if (child->IsA("Class Core.Function")) {
+            bridge::Pointer<UFunction> meow(child.get());
+
+            // These conflict with functions that exist on our UObject class.
+            if (const auto fn_name = meow->name.ToString();
+                fn_name == "IsA" || fn_name == "GetPackageName" || fn_name == "FindObject") {
+              return;
+            }
+
+            ProcessFunction<true>(obj, meow, generated_functions);
+          }
+        });
+
+    std::stringstream macro;
+    macro << "#define " << obj->name.ToString() << "_FUNCS   ";
+    for (const auto& [generated_cpp, generated_params, generated_source] : generated_functions) {
+      params_file << generated_params;
+      source_file << generated_source;
+      macro << generated_cpp;
+    }
+    pkg.generated_macros.push_back(macro.str());
+    pkg.generated_classes.push_back({uclass.get(), "", params_file.str(), source_file.str()});
+
+    return;
+  }
+
+  if (pkg.ProcessedClass(uclass)) return;
 
   file << "// Property size: ";
   file << std::hex << std::showbase << uclass->property_size;
@@ -206,8 +243,10 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
   file << " {\n";
   file << "public:\n";
 
+  const auto uclass_fullname = uclass->GetFullName();
   file << "static UClass* StaticClass() {\n";
-  file << "  static UClass* clazz = UObject::FindClass(\"" << uclass->GetFullName() << "\");\n";
+  file << "  static UClass* clazz = UObject::FindClass("
+       << StringHash<>::Calculate(uclass_fullname).value() << "ULL); /* " << uclass_fullname << " */\n";
   file << "  return clazz;\n";
   file << "};\n";
 
@@ -215,7 +254,7 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
       obj, file, [&](const bridge::Pointer<UProperty>& child) {
         if (child->IsA("Class Core.Function")) {
           bridge::Pointer<UFunction> meow(child.get());
-          ProcessFunction(obj, meow, generated_functions);
+          ProcessFunction<false>(obj, meow, generated_functions);
         }
       });
 

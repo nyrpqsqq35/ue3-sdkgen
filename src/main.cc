@@ -155,6 +155,17 @@ void GenerateSDK() {
     classes_file.close();
     params_file.close();
     classes_cc_file.close();
+
+    if (!p.second.generated_macros.empty()) {
+      std::ofstream macros_file(processor::sdk_path / (p.first->name.ToString() + "_macros.h"),
+                                std::ios_base::out);
+      macros_file << config::kHeaderPrefix;
+      for (const auto& st : p.second.generated_macros) {
+        macros_file << st << "\n";
+      }
+      macros_file << config::kHeaderPostfix;
+      macros_file.close();
+    }
   }
 
   LOG_INFO("Writing verifier.cc");

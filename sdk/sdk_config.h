@@ -4,11 +4,10 @@
 //
 
 #pragma once
-#include "sdk_config.h"
-
 #include <string_view>
 #include <variant>
 #include <array>
+#include <bit>
 
 namespace SDKGEN_NS {
 
@@ -24,13 +23,16 @@ struct OffsetConfig {
 
   const std::string_view name;
   std::variant<Offset, Pattern> data;
+  // PTR TO ANOTHER UINTPTR_T
+  // can't be uintptr_t* because constexpr:)
+  void* ptr_to_uintptr{};
   mutable uintptr_t value{};
 };
 
 // clang-format off
 constexpr auto kOffsetConfigs = std::to_array<OffsetConfig>({
-   { "GNames", OffsetConfig::Offset{0x23D4D80u} },
-   { "GObjects", OffsetConfig::Offset{0x23D4DC8u} },
+   { "GNames", OffsetConfig::Offset{0x23D4D80u}, &GNames },
+   { "GObjects", OffsetConfig::Offset{0x23D4DC8u}, &GObjects },
 });
 // clang-format on
 

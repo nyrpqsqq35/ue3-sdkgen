@@ -8,6 +8,7 @@
 #include <map>
 #include <ranges>
 #include <unordered_map>
+#include "sdk_rt.h"
 
 namespace {
 
@@ -71,47 +72,25 @@ TArray<UObject*>& UObject::GObjects() { return *::GObjects; }
 
 TArray<FNameEntry*>& UObject::GNames() { return *::GNames; }
 
+UClass* UObject::FindClassOld(const std::string_view class_full_name) {
+  for (auto* obj : GObjects()) {
+    if (obj->GetFullName() == class_full_name) {
+      return static_cast<UClass*>(obj);
+    }
+  }
+  return nullptr;
+}
 UClass* UObject::FindClass(const std::string_view class_full_name) {
   return FindClass(SDKGEN_NS::StringHash<>::Calculate(class_full_name));
 }
 UClass* UObject::FindClass(const rlsdk::StringHash<> hash) {
-  static auto class_map = []() {
-    std::unordered_map<SDKGEN_NS::StringHash<>, UClass*> rv;
-    rv.reserve(GObjects().size());  // shouldn't use too much excess memory?
-    for (auto* obj : GObjects()) {
-      if (!obj) continue;
-      if (obj->IsA<UClass>()) {
-        const auto name_hash = SDKGEN_NS::StringHash<>::Calculate(obj->GetFullName());
-        rv.insert({name_hash, static_cast<UClass*>(obj)});
-      }
-    }
-    return rv;
-  }();
-  if (!class_map.contains(hash)) {
-    return nullptr;
-  }
-  return class_map[hash];
+  return SDKGEN_NS::rt().FindClass(hash);
 }
 UFunction* UFunction::FindFunction(const std::string_view function_full_name) {
   return FindFunction(SDKGEN_NS::StringHash<>::Calculate(function_full_name));
 }
 UFunction* UFunction::FindFunction(const SDKGEN_NS::StringHash<> hash) {
-  static auto fn_map = []() {
-    std::unordered_map<SDKGEN_NS::StringHash<>, UFunction*> rv;
-    rv.reserve(GObjects().size());
-    for (auto* obj : GObjects()) {
-      if (!obj) continue;
-      if (obj->IsA<UFunction>()) {
-        const auto name_hash = SDKGEN_NS::StringHash<>::Calculate(obj->GetFullName());
-        rv.insert({name_hash, static_cast<UFunction*>(obj)});
-      }
-    }
-    return rv;
-  }();
-  if (!fn_map.contains(hash)) {
-    return nullptr;
-  }
-  return fn_map[hash];
+  return SDKGEN_NS::rt().FindFunction(hash);
 }
 
 void UObject::ProcessEvent(class UFunction* uFunction, void* uParams, void* uResult) {
@@ -122,12 +101,13 @@ void UObject::ProcessEvent(class UFunction* uFunction, void* uParams, void* uRes
 namespace {
 template <typename TGameChar>
 auto GameCharToString(const TGameChar* data, const std::size_t len) {
-  // TODO: there might be a problem here?
   if constexpr (std::is_same_v<TGameChar, wchar_t>) {
     std::wstring_view sv{data, len};
     return std::string(sv.begin(), sv.end());
   } else if constexpr (std::is_same_v<TGameChar, char>) {
     return std::string_view{data, len};
+  } else {
+    static_assert(false, "game_char is wrong type");
   }
 }
 
@@ -153,10 +133,4 @@ std::string FString::ToString() const {
   if (size() == 0) return "";
 
   return GameCharToString(data(), static_cast<std::size_t>(size()));
-  // if constexpr (std::is_same_v<game_char, wchar_t>) {
-  //   std::wstring_view sv{data(), static_cast<std::size_t>(size())};
-  //   return std::string(sv.begin(), sv.end());
-  // } else if constexpr (std::is_same_v<game_char, char>) {
-  //   return std::string{(char*)data(), static_cast<std::size_t>(size())};
-  // }
 }
