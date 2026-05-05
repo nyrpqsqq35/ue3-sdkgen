@@ -175,7 +175,6 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
   auto package_obj = obj->GetPackageObject();
   auto& pkg = GetPackage(package_obj);
   std::vector<GeneratedFunction> generated_functions;
-
   std::stringstream file;
   std::stringstream params_file;
   std::stringstream source_file;
@@ -226,12 +225,15 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
   file << std::dec << " (" << uclass->property_size << ")\n";
 
   const auto our_name = CreateIdentifierName(uclass);
+  Package::JsonObject json{obj, our_name, uclass->property_size};
 
   file << "class " << our_name;
 
   if (uclass->superfield.IsValid()) {
-    file << " : public " << CreateIdentifierName(uclass->superfield);
+    const auto their_name = CreateIdentifierName(uclass->superfield);
+    file << " : public " << their_name;
     file << " /* " << uclass->superfield->GetFullName() << " */";
+    json.inheritance.emplace(their_name, uclass->superfield->GetPackageObject()->name.ToString());
 
     if (uclass->superfield->GetPackageObject() == package_obj) {
       if (!pkg.ProcessedClass(uclass->superfield)) {
@@ -246,16 +248,22 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
   const auto uclass_fullname = uclass->GetFullName();
   file << "static UClass* StaticClass() {\n";
   file << "  static UClass* clazz = UObject::FindClass("
-       << StringHash<>::Calculate(uclass_fullname).value() << "ULL); /* " << uclass_fullname << " */\n";
+       << StringHash<>::Calculate(uclass_fullname).value() << "ULL); /* " << uclass_fullname
+       << " */\n";
   file << "  return clazz;\n";
   file << "};\n";
 
   processor::structs::StandaloneProcessStruct<false, true>(
-      obj, file, [&](const bridge::Pointer<UProperty>& child) {
+      obj, file,
+      [&](const bridge::Pointer<UProperty>& child) {
         if (child->IsA("Class Core.Function")) {
           bridge::Pointer<UFunction> meow(child.get());
           ProcessFunction<false>(obj, meow, generated_functions);
         }
+      },
+      [&json](bridge::Pointer<UProperty> prop) {
+        json.props.emplace_back(prop->name.ToString(), prop->property_flags, GetPropertyCType(prop),
+                                prop->array_dim, prop->offset);
       });
 
   file << "\npublic:\n";
@@ -267,7 +275,9 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
 
   file << "};" << std::endl;
 
-  pkg.generated_classes.push_back({uclass.get(), file.str(), params_file.str(), source_file.str()});
+  pkg.generated_classes.emplace_back(uclass.get(), file.str(), params_file.str(),
+                                     source_file.str());
+  pkg.json_classes.emplace_back(json);
 }
 }  // namespace classes
 }  // namespace processor

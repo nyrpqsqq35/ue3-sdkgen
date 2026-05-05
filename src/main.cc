@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
+#include "build_config.h"
+#include <stdexcept>
 #include "bridge.h"
 #include "util.h"
 #include "config.h"
@@ -12,14 +14,38 @@
 #include "processor_enums.h"
 #include "processor_structs.h"
 #include "unreal.h"
+#include "sigscan.h"
+#include <spdlog/fmt/bin_to_hex.h>
+#include <magic_enum/magic_enum_all.hpp>
+#include <simdjson.h>
 
+// #define ENABLE_DUMP_NAMES
+// #define ENABLE_DUMP_OBJECTS
 namespace {
 
 using namespace bridge;
 uintptr_t base_address = 0;
 
+template <typename T>
+uintptr_t derel(const util::Mapping& map, const ptrdiff_t offset, const ptrdiff_t diff) {
+  T rel_value = *(T*)((uintptr_t)map.base + offset + diff);
+  uintptr_t abs_value = ((uintptr_t)offset + diff + sizeof(T)) + rel_value;
+  return abs_value;
+}
+
 void FindAndDumpGNames(const util::Mapping& mapping) {
-  const Pointer<int> v0(base_address + config::kGNamesOffset);
+  auto offset = config::kGNamesOffset;
+  if (!config::kUseOffsets) {
+    if (auto located =
+            avx2_strstr_anysize((byte*)mapping.base, mapping.size, config::kGNamesSignature);
+        located == std::string::npos) {
+      throw std::runtime_error("gnames signature is bad");
+    } else {
+      offset = derel<uint32>(mapping, located, config::kGNamesRelOp);
+    }
+  }
+
+  const Pointer<int> v0(base_address + offset);
   if (!v0.IsValid()) {
     throw std::runtime_error("Couldn't locate GNames");
   }
@@ -49,7 +75,18 @@ void FindAndDumpGNames(const util::Mapping& mapping) {
 #endif
 }
 void FindAndDumpGObjects(const util::Mapping& mapping) {
-  const Pointer<int> v4(base_address + config::kGObjectsOffset);
+  auto offset = config::kGObjectsOffset;
+  if (!config::kUseOffsets) {
+    if (auto located =
+            avx2_strstr_anysize((byte*)mapping.base, mapping.size, config::kGObjectsSignature);
+        located == std::string::npos) {
+      throw std::runtime_error("gobjects signature is bad");
+    } else {
+      offset = derel<uint32>(mapping, located, config::kGObjectsRelOp);
+    }
+  }
+
+  const Pointer<int> v4(base_address + offset);
   if (!v4.IsValid()) {
     throw std::runtime_error("Couldn't locate GObjects");
   }
@@ -84,6 +121,78 @@ void FindAndDumpGObjects(const util::Mapping& mapping) {
   // DLOG(INFO) << "GObjects @ " << std::hex << ptr_to_gobjects.get();
 }
 }  // namespace
+
+namespace simdjson {
+
+template <typename builder_type>
+void tag_invoke(serialize_tag, builder_type& builder,
+                const processor::Package::ObjectProperty& prop) {
+  builder.start_object();
+  builder.append_key_value("name", prop.name);
+  builder.append_comma();
+  builder.append_key_value("flags", prop.flags);
+  builder.append_comma();
+  builder.append_key_value("offset", prop.offset);
+  builder.append_comma();
+  builder.append_key_value("type", prop.type);
+  builder.append_comma();
+  builder.append_key_value("num_elements", prop.num_elements);
+  builder.end_object();
+}
+
+template <typename builder_type>
+void tag_invoke(serialize_tag, builder_type& builder, const processor::Package::JsonObject& obj) {
+  builder.start_object();
+
+  builder.append_key_value("name", obj.name);
+  builder.append_comma();
+  builder.append_key_value("size", obj.size);
+  builder.append_comma();
+
+  builder.append_key_value("full_name", obj.ptr->GetFullName());
+  builder.append_comma();
+  builder.append_key_value("flags", std::to_underlying(obj.ptr->object_flags));
+  builder.append_comma();
+
+  if (obj.inheritance) {
+    builder.append_key_value("inheritance", obj.inheritance);
+    builder.append_comma();
+  }
+
+  builder.append_key_value("props", obj.props);
+
+  builder.end_object();
+}
+
+template <typename builder_type>
+void tag_invoke(serialize_tag, builder_type& builder, const processor::Package::JsonEnum& e) {
+  builder.start_object();
+  builder.append_key_value("name", e.name);
+  builder.append_comma();
+  builder.append_key_value("values", e.values);
+  builder.end_object();
+}
+
+template <typename builder_type>
+void tag_invoke(serialize_tag, builder_type& builder, const processor::Package::JsonConst& e) {
+  builder.start_object();
+  builder.append_key_value("name", e.name);
+  builder.append_comma();
+  builder.append_key_value("value", e.value);
+  builder.end_object();
+}
+
+template <typename builder_type>
+void tag_invoke(serialize_tag, builder_type& builder,
+                const std::pair<std::string, std::string>& e) {
+  builder.start_array();
+  builder.escape_and_append_with_quotes(e.first);
+  builder.append_comma();
+  builder.escape_and_append_with_quotes(e.second);
+  builder.end_array();
+}
+
+}  // namespace simdjson
 
 void GenerateSDK() {
   auto [process_, image_path] = util::LocateProcess(config::kProcessName);
@@ -124,9 +233,13 @@ void GenerateSDK() {
 
   for (const auto& p : processor::GetAllPackages()) {
     LOG_INFO("Writing structs to disk");
+    std::ofstream json_file(processor::sdk_path / (p.first->name.ToString() + ".json"),
+                            std::ios_base::out);
     std::ofstream structs_file(processor::sdk_path / (p.first->name.ToString() + "_structs.h"),
                                std::ios_base::out);
+
     structs_file << config::kHeaderPrefix;
+
     for (const auto& st : p.second.generated_structs) {
       structs_file << st.generated_cpp << "\n";
     }
@@ -143,11 +256,13 @@ void GenerateSDK() {
     classes_file << config::kHeaderPrefix;
     params_file << config::kHeaderPrefix;
     classes_cc_file << "#include \"sdk.h\"\n#pragma pack(push, 1)\n";
+
     for (const auto& st : p.second.generated_classes) {
       classes_file << st.generated_cpp << "\n";
       if (!st.generated_header.empty()) params_file << st.generated_header << "\n";
       if (!st.generated_source.empty()) classes_cc_file << st.generated_source << "\n";
     }
+
     classes_file << config::kHeaderPostfix << std::endl;
     params_file << config::kHeaderPostfix << std::endl;
     classes_cc_file << config::kHeaderPostfix << std::endl;
@@ -166,6 +281,22 @@ void GenerateSDK() {
       macros_file << config::kHeaderPostfix;
       macros_file.close();
     }
+
+    // Create JSON object
+    simdjson::builder::string_builder sb;
+    sb.start_object();
+    sb.append_key_value("name", p.first->GetFullName());
+    sb.append_comma();
+    sb.append_key_value("structs", p.second.json_structs);
+    sb.append_comma();
+    sb.append_key_value("classes", p.second.json_classes);
+    sb.append_comma();
+    sb.append_key_value("enums", p.second.json_enums);
+    sb.append_comma();
+    sb.append_key_value("consts", p.second.json_consts);
+    sb.end_object();
+    json_file.write(sb.c_str(), sb.size());
+    json_file.close();
   }
 
   LOG_INFO("Writing verifier.cc");
@@ -193,7 +324,11 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
     case DLL_PROCESS_ATTACH:
       std::thread([&]() {
         spdlog::set_level(spdlog::level::trace);
-        MboxFmt("UE3-SDK-GEN started");
+#ifdef CI_MESSAGE
+        MboxFmt("UE3-SDK-GEN v{}+{} started\n{}", PROJECT_VERSION, GIT_HASH, CI_MESSAGE);
+#else
+        MboxFmt("UE3-SDK-GEN v{}+{} started", PROJECT_VERSION, GIT_HASH);
+#endif
         const auto start_time = absl::Now();
 
         try {
@@ -225,10 +360,15 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
 #undef MboxFmt
 #undef MboxFmtErr
 #else
+
 int main() {
   spdlog::set_level(spdlog::level::trace);
 
   const auto start_time = absl::Now();
+  LOG_INFO("UE3-SDK-GEN v{}+{}", PROJECT_VERSION, GIT_HASH);
+#ifdef CI_MESSAGE
+  LOG_INFO("{}", CI_MESSAGE);
+#endif
   LOG_INFO("UE3-SDK-GEN started at {}", absl::FormatTime(start_time));
 
   try {

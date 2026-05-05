@@ -34,7 +34,8 @@ inline std::string GetPropertyNameForFunctionGen(const bridge::Pointer<UProperty
 template <bool process_children, bool verifier = false>
 std::string StandaloneProcessStruct(
     bridge::Pointer<UObject> obj, std::stringstream& file,
-    std::function<void(bridge::Pointer<UProperty>)> callback_func = nullptr) {
+    std::function<void(bridge::Pointer<UProperty>)> callback_func = nullptr,
+    std::function<void(bridge::Pointer<UProperty>)> callback_func2 = nullptr) {
   bridge::Pointer<UStruct> ustruct(obj.get());
 
   auto package_obj = obj->GetPackageObject();
@@ -62,6 +63,7 @@ std::string StandaloneProcessStruct(
 
     if (child->IsA("Class Core.Property")) {
       child_properties.emplace_back(child);
+      if (callback_func2) callback_func2(child);
     } else {
       // we call the callback function here so the callback sees the Function properties
       if (callback_func) callback_func(child);

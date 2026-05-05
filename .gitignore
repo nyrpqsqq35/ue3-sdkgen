@@ -2,3 +2,4 @@
 sdk/*
 !sdk/CMakeLists.txt
 !sdk/sdk*
+__cmake_systeminformation/

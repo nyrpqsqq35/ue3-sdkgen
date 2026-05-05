@@ -29,12 +29,15 @@ void ProcessStruct(bridge::Pointer<UObject> obj) {
   file << std::dec << " (" << ustruct->property_size << ")\n";
 
   const auto our_name = CreateIdentifierName(ustruct);
+  Package::JsonObject json{obj, our_name, ustruct->property_size};
 
   file << "struct " << our_name;
 
   if (ustruct->superfield.IsValid()) {
-    file << " : " << CreateIdentifierName(ustruct->superfield);
+    const auto their_name = CreateIdentifierName(ustruct->superfield);
+    file << " : " << their_name;
     file << " /* " << ustruct->superfield->GetFullName() << " */";
+    json.inheritance.emplace(their_name, ustruct->superfield->GetPackageObject()->name.ToString());
 
     if (ustruct->superfield->GetPackageObject() == package_obj) {
       if (!pkg.ProcessedStruct(ustruct->superfield)) {
@@ -45,7 +48,10 @@ void ProcessStruct(bridge::Pointer<UObject> obj) {
 
   file << " {\n";
 
-  StandaloneProcessStruct<true, true>(obj, file);
+  StandaloneProcessStruct<true, true>(obj, file, nullptr, [&json](bridge::Pointer<UProperty> prop) {
+    json.props.emplace_back(prop->name.ToString(), prop->property_flags, GetPropertyCType(prop),
+                            prop->array_dim, prop->offset);
+  });
 
   file << "};" << std::endl;
 
@@ -53,6 +59,7 @@ void ProcessStruct(bridge::Pointer<UObject> obj) {
   //      << std::endl;
 
   pkg.generated_structs.push_back({ustruct.get(), file.str()});
+  pkg.json_structs.emplace_back(json);
 }
 }  // namespace structs
 }  // namespace processor

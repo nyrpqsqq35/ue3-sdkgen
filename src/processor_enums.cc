@@ -16,8 +16,11 @@ void ProcessEnum(bridge::Pointer<UObject>& obj) {
   bridge::Pointer<UEnum> uenum(obj.get());
   auto& pkg = GetPackage(uenum->GetPackageObject());
   std::stringstream file;
+  const auto our_name = CreateIdentifierName(obj);
 
-  file << "enum class " << CreateIdentifierName(obj) << " : uint8_t {\n";
+  std::vector<std::string> values;
+
+  file << "enum class " << our_name << " : uint8_t {\n";
 
   absl::flat_hash_set<std::string> used_names;
   auto names = uenum->names.Fetch();
@@ -30,6 +33,7 @@ void ProcessEnum(bridge::Pointer<UObject>& obj) {
       enum_member_name.replace(enum_member_name.end() - 4, enum_member_name.end(), "_END");
 
     file << enum_member_name;
+    values.emplace_back(enum_member_name);
 
     if (used_names.contains(enum_member_name)) {
       // Dedupe enum member name by adding the index to the end of the member name
@@ -44,6 +48,7 @@ void ProcessEnum(bridge::Pointer<UObject>& obj) {
   file << "};\n" << std::endl;
 
   pkg.generated_classes.emplace_back(uenum.get(), file.str());
+  pkg.json_enums.emplace_back(our_name, values);
 }
 
 }  // namespace enums

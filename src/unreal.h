@@ -190,6 +190,9 @@ static_assert(sizeof(UStrProperty) == 200);
 class UQWordProperty : public UProperty {};
 static_assert(sizeof(UQWordProperty) == 200);
 
+class USQWordProperty : public UProperty {};
+static_assert(sizeof(USQWordProperty) == 200);
+
 class UObjectProperty : public UProperty {
  public:
   bridge::Pointer<UClass> property_class;

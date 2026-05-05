@@ -5,9 +5,17 @@
   "dependencies": [
     "spdlog",
     "abseil",
-    "magic-enum"
+    "magic-enum",
+    {
+      "name": "simdjson",
+      "features": [
+        "exceptions"
+      ]
+    }
   ],
   "vcpkg-configuration": {
-    "overlay-triplets": ["third_party/vcpkg-triplets"]
+    "overlay-triplets": [
+      "third_party/vcpkg-triplets"
+    ]
   }
 }

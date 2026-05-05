@@ -13,6 +13,7 @@
 * intuitive runtime UFunction hooking/blocking
     * Using [CallableUFunction::Hook*](sdk/sdk_callableufunction.h)
     * e.g. `UInteraction::Tick::HookPre([&](auto* params, UObject* obj, UFunction* fn, auto& ctx) { ... })`
+* outputs JSON (w/o functions for now)
 
 ## Caveats
 
@@ -78,6 +79,53 @@ dir build/out/
 6. if you want to use the function hooks you'll have to hook ProcessEvent yourself
     1. use `rlsdk::Rt::ProcessEvent_Hook` as the detour
     2. store the original in the `rlsdk::Rt::o_ProcessEvent` variable
+
+### JSON types
+<details>
+  <summary>JSON types (TS)</summary>
+
+```ts
+type EFlags = number // int64 .... but its just a raw number... beware....
+export interface ObjectProperty {
+  name: string
+  flags: EFlags
+  offset: number
+  type: string
+  num_elements: number
+}
+export interface PackageObject {
+  name: string
+  size: number
+  full_name: string
+  flags: EFlags
+  inheritance?: [name: string, pkg: string]
+  props: Array<ObjectProperty>
+}
+export interface PackageEnum {
+  name: string
+  values: Array<string>
+}
+export interface PackageConst {
+  name: string
+  value: string
+}
+export interface Package {
+  name: `Package ${PackageName}`
+  structs: Array<PackageObject>
+  classes: Array<PackageObject>
+  enums: Array<PackageEnum>
+  consts: Array<PackageConst>
+}
+
+export const ValidPackages = [
+  'Core',
+  'Engine',
+  '...'
+] as const
+export type PackageName = (typeof ValidPackages)[number]
+```
+
+</details>
 
 ### Credits
 

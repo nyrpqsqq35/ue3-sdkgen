@@ -21,6 +21,14 @@ inline std::filesystem::path sdk_path = std::filesystem::current_path() / ".." /
 
 typedef struct Package {
  public:
+  struct ObjectProperty {
+    std::string name;
+    uint64_t flags;
+    std::string type;
+    uint32_t num_elements;
+    uintptr_t offset;
+  };
+
   struct GeneratedObject {
     bridge::Pointer<UObject> ptr;
     std::string generated_cpp;
@@ -28,9 +36,39 @@ typedef struct Package {
     std::string generated_source;  // optional
   };
 
+  struct JsonObject {
+    JsonObject(bridge::Pointer<UObject> ptr, const std::string& name, uint32_t size)
+        : ptr(ptr), name(name), size(size) {}
+
+    bridge::Pointer<UObject> ptr;
+    std::string name;
+    uint32_t size;
+
+    std::vector<ObjectProperty> props;
+    std::optional<std::pair<std::string, std::string>> inheritance;
+    bool operator==(std::list<GeneratedObject>::const_reference value) const {
+      return ptr == value.ptr;
+    };
+  };
+
+  struct JsonEnum {
+    std::string name;
+    std::vector<std::string> values;
+  };
+
+  struct JsonConst {
+    std::string name;
+    std::string value;
+  };
+
   std::list<GeneratedObject> generated_structs;
   std::list<GeneratedObject> generated_classes;
   std::list<std::string> generated_macros;
+
+  std::list<JsonObject> json_structs;
+  std::list<JsonObject> json_classes;
+  std::list<JsonEnum> json_enums;
+  std::list<JsonConst> json_consts;
 
   template <std::derived_from<UObject> T>
   inline bool ProcessedStruct(bridge::Pointer<T> struct_to_check) const {
@@ -128,6 +166,7 @@ constexpr const auto kClassTypenamePrefix = "class ";
 
 constexpr const auto kStrType = "FString";
 constexpr const auto kQwordType = "uint64_t";
+constexpr const auto kSQwordType = "uint64_t";
 constexpr const auto kNameType = "FName";
 const auto kMapType = "TMap"s;
 constexpr const auto kIntType = "int32_t";
@@ -146,6 +185,8 @@ inline const std::string GetPropertyCType(const bridge::Pointer<UProperty>& prop
     return kStrType;
   } else if (property->IsA("Class Core.QWordProperty")) {
     return kQwordType;
+  } else if (property->IsA("Class Core.SQWordProperty")) {
+    return kSQwordType;
   } else if (property->IsA("Class Core.ObjectProperty")) {
     bridge::Pointer<UObjectProperty> up(property.get());
     return kClassTypenamePrefix + CreateIdentifierName(up->property_class) + "*";
@@ -190,6 +231,8 @@ inline const size_t GetPropertySize(bridge::Pointer<UProperty>& property) {
       return sizeof(FString);
     } else if (property->IsA("Class Core.QWordProperty")) {
       return sizeof(uint64_t);
+    } else if (property->IsA("Class Core.SQWordProperty")) {
+      return sizeof(int64_t);
     } else if (property->IsA("Class Core.ObjectProperty")) {
       return sizeof(uintptr_t);
     } else if (property->IsA("Class Core.ComponentProperty")) {

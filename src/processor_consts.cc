@@ -16,8 +16,10 @@ void ProcessConst(bridge::Pointer<UObject>& obj) {
   if (uconst->value.count() == 0) return;
 
   auto& pkg = GetPackage(uconst->GetPackageObject());
-  pkg.generated_classes.emplace_back(uconst.get(), "#define CONST_" + CreateIdentifierName(uconst) +
-                                                       " " + uconst->value.ToString() + "\n");
+  const auto our_name = CreateIdentifierName(uconst);
+  pkg.generated_classes.emplace_back(
+      uconst.get(), "#define CONST_" + our_name + " " + uconst->value.ToString() + "\n");
+  pkg.json_consts.emplace_back(our_name, uconst->value.ToString());
 }
 }  // namespace consts
 }  // namespace processor
