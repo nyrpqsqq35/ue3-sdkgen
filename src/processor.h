@@ -27,6 +27,7 @@ typedef struct Package {
     std::string type;
     uint32_t num_elements;
     uintptr_t offset;
+    std::optional<uint32_t> mask;
   };
 
   struct GeneratedObject {
@@ -37,8 +38,8 @@ typedef struct Package {
   };
 
   struct JsonObject {
-    JsonObject(bridge::Pointer<UObject> ptr, const std::string& name, uint32_t size)
-        : ptr(ptr), name(name), size(size) {}
+    // JsonObject(bridge::Pointer<UObject> ptr, const std::string& name, uint32_t size)
+    //     : ptr(ptr), name(name), size(size) {}
 
     bridge::Pointer<UObject> ptr;
     std::string name;
@@ -65,10 +66,10 @@ typedef struct Package {
   std::list<GeneratedObject> generated_classes;
   std::list<std::string> generated_macros;
 
-  std::list<JsonObject> json_structs;
-  std::list<JsonObject> json_classes;
-  std::list<JsonEnum> json_enums;
-  std::list<JsonConst> json_consts;
+  std::vector<JsonObject> json_structs;
+  std::vector<JsonObject> json_classes;
+  std::vector<JsonEnum> json_enums;
+  std::vector<JsonConst> json_consts;
 
   template <std::derived_from<UObject> T>
   inline bool ProcessedStruct(bridge::Pointer<T> struct_to_check) const {

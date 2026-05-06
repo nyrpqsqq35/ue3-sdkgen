@@ -49,8 +49,9 @@ void ProcessStruct(bridge::Pointer<UObject> obj) {
   file << " {\n";
 
   StandaloneProcessStruct<true, true>(obj, file, nullptr, [&json](bridge::Pointer<UProperty> prop) {
-    json.props.emplace_back(prop->name.ToString(), prop->property_flags, GetPropertyCType(prop),
-                            prop->array_dim, prop->offset);
+    json.props.push_back(Package::ObjectProperty{prop->name.ToString(), prop->property_flags,
+                                                 GetPropertyCType(prop), prop->array_dim,
+                                                 prop->offset});
   });
 
   file << "};" << std::endl;
@@ -59,7 +60,7 @@ void ProcessStruct(bridge::Pointer<UObject> obj) {
   //      << std::endl;
 
   pkg.generated_structs.push_back({ustruct.get(), file.str()});
-  pkg.json_structs.emplace_back(json);
+  pkg.json_structs.emplace_back(std::move(json));
 }
 }  // namespace structs
 }  // namespace processor

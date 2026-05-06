@@ -122,6 +122,24 @@ void FindAndDumpGObjects(const util::Mapping& mapping) {
 }
 }  // namespace
 
+template <simdjson::constevalutil::fixed_string Name, class T>
+void AppendKeyContainer(simdjson::builder::string_builder& builder,
+                        const std::vector<T>& container) {
+  builder.escape_and_append_with_quotes<Name>();
+  builder.append_colon();
+  builder.start_array();
+  if (container.size() > 0) {
+    builder.append(container.front());
+    // if (container.size() > 1)
+    for (auto it = container.cbegin() + 1; it != container.cend(); ++it) {
+      builder.append_comma();
+      const T& v = *it;
+      builder.append<const T&>(v);
+    }
+  }
+  builder.end_array();
+}
+
 namespace simdjson {
 
 template <typename builder_type>
@@ -135,8 +153,14 @@ void tag_invoke(serialize_tag, builder_type& builder,
   builder.append_key_value("offset", prop.offset);
   builder.append_comma();
   builder.append_key_value("type", prop.type);
-  builder.append_comma();
-  builder.append_key_value("num_elements", prop.num_elements);
+  if (prop.num_elements != 1) {
+    builder.append_comma();
+    builder.append_key_value("num_elements", prop.num_elements);
+  }
+  if (prop.mask.has_value()) {
+    builder.append_comma();
+    builder.append_key_value("mask", prop.mask.value());
+  }
   builder.end_object();
 }
 
@@ -287,13 +311,13 @@ void GenerateSDK() {
     sb.start_object();
     sb.append_key_value("name", p.first->GetFullName());
     sb.append_comma();
-    sb.append_key_value("structs", p.second.json_structs);
+    AppendKeyContainer<"structs">(sb, p.second.json_structs);
     sb.append_comma();
-    sb.append_key_value("classes", p.second.json_classes);
+    AppendKeyContainer<"classes">(sb, p.second.json_classes);
     sb.append_comma();
-    sb.append_key_value("enums", p.second.json_enums);
+    AppendKeyContainer<"enums">(sb, p.second.json_enums);
     sb.append_comma();
-    sb.append_key_value("consts", p.second.json_consts);
+    AppendKeyContainer<"consts">(sb, p.second.json_consts);
     sb.end_object();
     json_file.write(sb.c_str(), sb.size());
     json_file.close();
@@ -318,29 +342,31 @@ void GenerateSDK() {
 #define MboxFmt(Fmt, ...) MboxFmtWFlags(MB_OK, Fmt, __VA_ARGS__)
 #define MboxFmtErr(Fmt, ...) MboxFmtWFlags(MB_ICONERROR | MB_OK, Fmt, __VA_ARGS__)
 
+void MainThread(HMODULE module) {
+#ifdef CI_MESSAGE
+  MboxFmt("UE3-SDK-GEN v{}+{} started\n{}", PROJECT_VERSION, GIT_HASH, CI_MESSAGE);
+#else
+  MboxFmt("UE3-SDK-GEN v{}+{} started", PROJECT_VERSION, GIT_HASH);
+#endif
+  const auto start_time = absl::Now();
+
+  try {
+    GenerateSDK();
+  } catch (std::exception& ex) {
+    MboxFmtErr("Uncaught error during SDK generation: {}", ex.what());
+  }
+
+  const auto end_time = absl::Now();
+  const auto duration = end_time - start_time;
+  MboxFmt("Generator is complete in {}", absl::FormatDuration(duration));
+}
+
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
   // Perform actions based on the reason for calling.
   switch (reason) {
     case DLL_PROCESS_ATTACH:
-      std::thread([&]() {
-        spdlog::set_level(spdlog::level::trace);
-#ifdef CI_MESSAGE
-        MboxFmt("UE3-SDK-GEN v{}+{} started\n{}", PROJECT_VERSION, GIT_HASH, CI_MESSAGE);
-#else
-        MboxFmt("UE3-SDK-GEN v{}+{} started", PROJECT_VERSION, GIT_HASH);
-#endif
-        const auto start_time = absl::Now();
-
-        try {
-          GenerateSDK();
-        } catch (std::exception& ex) {
-          MboxFmtErr("Uncaught error during SDK generation: {}", ex.what());
-        }
-
-        const auto end_time = absl::Now();
-        const auto duration = end_time - start_time;
-        MboxFmt("Generator is complete in {}", absl::FormatDuration(duration));
-      }).detach();
+      spdlog::set_level(spdlog::level::trace);
+      CreateThread(0, 0, (LPTHREAD_START_ROUTINE)MainThread, instance, 0, 0);
       break;
     case DLL_THREAD_ATTACH:
       break;

@@ -262,8 +262,13 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
         }
       },
       [&json](bridge::Pointer<UProperty> prop) {
-        json.props.emplace_back(prop->name.ToString(), prop->property_flags, GetPropertyCType(prop),
-                                prop->array_dim, prop->offset);
+        Package::ObjectProperty op{prop->name.ToString(), prop->property_flags,
+                                   GetPropertyCType(prop), prop->array_dim, prop->offset};
+        if (prop->IsA("Class Core.BoolProperty")) {
+          op.mask = bridge::Pointer<UBoolProperty>(prop.get())->bitmask;
+        }
+
+        json.props.emplace_back(std::move(op));
       });
 
   file << "\npublic:\n";
@@ -277,7 +282,7 @@ void ProcessClass(bridge::Pointer<UObject> obj) {
 
   pkg.generated_classes.emplace_back(uclass.get(), file.str(), params_file.str(),
                                      source_file.str());
-  pkg.json_classes.emplace_back(json);
+  pkg.json_classes.emplace_back(std::move(json));
 }
 }  // namespace classes
 }  // namespace processor
