@@ -49,9 +49,13 @@ void ProcessStruct(bridge::Pointer<UObject> obj) {
   file << " {\n";
 
   StandaloneProcessStruct<true, true>(obj, file, nullptr, [&json](bridge::Pointer<UProperty> prop) {
-    json.props.push_back(Package::ObjectProperty{prop->name.ToString(), prop->property_flags,
-                                                 GetPropertyCType(prop), prop->array_dim,
-                                                 prop->offset});
+    Package::ObjectProperty op{prop->name.ToString(), prop->property_flags, GetPropertyCType(prop),
+                               prop->array_dim, prop->offset};
+    if (prop->IsA("Class Core.BoolProperty")) {
+      op.mask = bridge::Pointer<UBoolProperty>(prop.get())->bitmask;
+    }
+
+    json.props.emplace_back(std::move(op));
   });
 
   file << "};" << std::endl;
