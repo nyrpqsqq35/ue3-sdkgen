@@ -12,9 +12,6 @@
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
-      "environment": {
-        "VCPKG_INSTALLATION_ROOT": "C:\\src\\vcpkg"
-      },
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang-cl.exe",
         "CMAKE_CXX_COMPILER": "clang-cl.exe",
